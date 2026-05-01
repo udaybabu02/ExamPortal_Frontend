@@ -9,6 +9,9 @@ import { Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
 import armsLogo from "@/assets/arms-logo.png";
 import { useToast } from "@/hooks/use-toast";
 
+// --- IMPORT ADDED HERE ---
+import { API_BASE_URL } from "@/config";
+
 /** Generate a unique Hall Ticket Number like ARMS-XXXXXX */
 function generateHallTicket(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -65,8 +68,8 @@ const Register = () => {
     setLoading(true);
 
     try {
-      // Send the data to your Node.js MySQL backend
-      const response = await fetch("http://localhost:5000/api/register", {
+      // --- LOCALHOST REMOVED, API_BASE_URL ADDED HERE ---
+      const response = await fetch(`${API_BASE_URL}/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
