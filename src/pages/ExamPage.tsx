@@ -38,49 +38,66 @@ const ExamPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [tabWarnings, setTabWarnings] = useState(0);
-  
-  // NEW: Robust local timer state
   const [activeEndTime, setActiveEndTime] = useState<number | null>(null);
 
-  // 1. DYNAMIC FETCH & TIMER START LOGIC
+  // 1. POOLING LOGIC: 10 QUESTIONS PER SUBJECT (30 TOTAL)
   useEffect(() => {
-    const fetchQuestions = async () => {
-      if (!id) return;
-      
+    const fetchAndMixQuestions = async () => {
       try {
         setLoading(true);
-        const subjectName = decodeURIComponent(id);
-        const response = await axios.get(`http://localhost:5000/api/questions/${encodeURIComponent(subjectName)}`);
+        
+        // 👇 CHANGED KEYS: This forces the browser to drop the old 20-question cache and fetch the 30 fresh ones!
+        const sessionKey = `active_exam_questions_v3_final`;
+        const timerKey = `timer_v3_final`;
+        
+        const savedQuestions = sessionStorage.getItem(sessionKey);
+        const savedTime = sessionStorage.getItem(timerKey);
 
-        if (response.data && response.data.length > 0) {
-          setQuestions(response.data);
-
-          // --- CHEAT-PROOF TIMER LOGIC ---
-          // Check if this exam already has a running timer in this session
-          const savedTime = sessionStorage.getItem(`timer_${subjectName}`);
-          if (savedTime) {
-            setActiveEndTime(parseInt(savedTime, 10)); // Resume existing timer
-          } else {
-            const newEndTime = Date.now() + 10 * 60 * 1000; // Start new 10-minute timer
-            setActiveEndTime(newEndTime);
-            sessionStorage.setItem(`timer_${subjectName}`, newEndTime.toString());
-          }
-          // -------------------------------
-
+        if (savedQuestions && savedTime) {
+          setQuestions(JSON.parse(savedQuestions));
+          setActiveEndTime(parseInt(savedTime, 10));
         } else {
-          toast({ variant: "destructive", title: "Subject Not Found" });
+          const subjects = ["Java", "Python", "Aptitude"];
+          let combinedPool: QuestionItem[] = [];
+
+          for (const sub of subjects) {
+            try {
+              const res = await axios.get(`http://localhost:5000/api/questions/${encodeURIComponent(sub)}`);
+              const subjectSelection = res.data
+                .sort(() => Math.random() - 0.5)
+                .slice(0, 10);
+              combinedPool = [...combinedPool, ...subjectSelection];
+            } catch (e) {
+              console.error(`Error fetching ${sub}:`, e);
+            }
+          }
+
+          if (combinedPool.length > 0) {
+            // 👇 FIXED TEXT BUG: Removed the aggressive replace() so text doesn't get deleted
+            const finalShuffled = combinedPool.sort(() => Math.random() - 0.5).map(q => ({
+              ...q,
+              question_text: q.question_text 
+            }));
+
+            setQuestions(finalShuffled);
+            sessionStorage.setItem(sessionKey, JSON.stringify(finalShuffled));
+
+            const newEndTime = Date.now() + 30 * 60 * 1000;
+            setActiveEndTime(newEndTime);
+            sessionStorage.setItem(timerKey, newEndTime.toString());
+          }
         }
       } catch (error) {
-        toast({ variant: "destructive", title: "Connection Failed" });
+        toast({ variant: "destructive", title: "Server Connection Failed" });
       } finally {
         setLoading(false);
       }
     };
 
-    fetchQuestions();
-  }, [id, toast]);
+    fetchAndMixQuestions();
+  }, [toast]);
 
-  // 2. TAB PROTECTION
+  // 2. ANTI-CHEAT & TAB PROTECTION
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && !submitting && questions.length > 0) {
@@ -88,8 +105,8 @@ const ExamPage = () => {
           const next = prev + 1;
           toast({
             variant: "destructive",
-            title: `⚠️ Tab Switch Warning (${next}/3)`,
-            description: next >= 3 ? "Auto-submitting now." : "Please stay on the exam page!",
+            title: `⚠️ Security Warning (${next}/3)`,
+            description: next >= 3 ? "Exceeded limit. Auto-submitting." : "Stay on the exam screen!",
           });
           if (next >= 3) handleSubmit();
           return next;
@@ -100,9 +117,9 @@ const ExamPage = () => {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [toast, questions.length, submitting]);
 
-  // 3. SUBMISSION LOGIC
+  // 3. FINAL SUBMISSION (WITH USER-SPECIFIC STORAGE)
   const handleSubmit = useCallback(async () => {
-    if (submitting || questions.length === 0) return;
+    if (submitting || questions.length === 0 || !user?.id) return;
     setSubmitting(true);
 
     try {
@@ -111,14 +128,16 @@ const ExamPage = () => {
         const userAnswer = answers[q.id.toString()] || "Not answered";
         const isCorrect = userAnswer === q.correct_answer;
         if (isCorrect) correct++;
-        return { questionId: q.id, selected: userAnswer, isCorrect: isCorrect };
+        return { questionId: q.id, selected: userAnswer, isCorrect };
       });
 
       const percentage = Math.round((correct / questions.length) * 100);
 
+      // 👇 UPDATED PAYLOAD: Now includes studentName
       const payload = {
-        userId: user?.id,
-        examId: id,
+        userId: user.id,
+        studentName: user.name, 
+        examId: "unified-assessment",
         percentage,
         passed: percentage >= 40,
         totalQuestions: questions.length,
@@ -128,22 +147,36 @@ const ExamPage = () => {
       };
 
       await axios.post("http://localhost:5000/api/results", payload);
-      localStorage.setItem("exam_result", JSON.stringify({ ...payload, examTitle: id }));
       
-      // Clear the timer from memory so they can take it again later
-      sessionStorage.removeItem(`timer_${decodeURIComponent(id || "")}`);
+      // 👉 USER-SPECIFIC PROGRESS TRACKER
+      const allProgress = JSON.parse(localStorage.getItem("user_exam_progress") || "{}");
+      if (!allProgress[user.id]) allProgress[user.id] = [];
+      
+      if (!allProgress[user.id].includes("unified-assessment")) {
+        allProgress[user.id].push("unified-assessment");
+      }
+      localStorage.setItem("user_exam_progress", JSON.stringify(allProgress));
+
+      localStorage.setItem("exam_result", JSON.stringify({ 
+        ...payload, 
+        examTitle: "Comprehensive Final Assessment" 
+      }));
+      
+      // 👇 Ensure we delete the correct session keys so they can retake it later if needed
+      sessionStorage.removeItem("active_exam_questions_v3_final");
+      sessionStorage.removeItem("timer_v3_final");
       
       clearExam();
       navigate("/result");
     } catch (error) {
-      toast({ variant: "destructive", title: "Save Failed" });
+      toast({ variant: "destructive", title: "Result save failed" });
     } finally {
       setSubmitting(false);
     }
-  }, [id, user, answers, questions, clearExam, navigate, toast, submitting]);
+  }, [user, answers, questions, clearExam, navigate, toast, submitting]);
 
   const onTimeUp = useCallback(() => {
-    toast({ variant: "destructive", title: "Time's up!" });
+    toast({ variant: "destructive", title: "Time Expired!" });
     handleSubmit();
   }, [handleSubmit, toast]);
 
@@ -153,18 +186,13 @@ const ExamPage = () => {
   const answeredCount = Object.keys(answers).length;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-background pb-20">
+    <div className="min-h-screen bg-slate-50 pb-20">
       <Navbar />
-      <div className="sticky top-16 z-40 border-b bg-white/80 backdrop-blur-md px-4 py-4 dark:bg-card/95">
-        <div className="mx-auto flex max-w-4xl items-center justify-between">
-          {/* FIXED: Removed the hardcoded "Exam" text so it doesn't repeat */}
-          <h2 className="text-xl font-bold capitalize text-slate-800 dark:text-slate-100">
-            {decodeURIComponent(id || "")}
-          </h2>
+      <div className="sticky top-16 z-40 border-b bg-white/80 backdrop-blur-md px-4 py-4">
+        <div className="mx-auto flex max-w-5xl items-center justify-between">
+          <h2 className="text-xl font-bold text-slate-800">Final Comprehensive Exam</h2>
           <div className="flex items-center gap-4">
-            {tabWarnings > 0 && <span className="flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-bold text-red-600 border border-red-200">Warnings: {tabWarnings}/3</span>}
-            
-            {/* FIXED: Uses the active local timer */}
+            {tabWarnings > 0 && <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-bold text-red-600">Warnings: {tabWarnings}/3</span>}
             {activeEndTime && <Timer endTime={activeEndTime} onTimeUp={onTimeUp} />}
           </div>
         </div>
@@ -172,26 +200,23 @@ const ExamPage = () => {
 
       <main className="mx-auto max-w-5xl px-4 py-8">
         <div className="flex flex-col gap-8 lg:flex-row">
-          <aside className="lg:w-56 lg:shrink-0">
-            <div className="rounded-2xl border bg-white dark:bg-card p-5 shadow-sm">
-              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Jump to Question</h3>
-              <div className="grid grid-cols-5 gap-2 lg:grid-cols-4">
-                {questions.map((q, i) => {
-                  const isCurrent = i === currentQ;
-                  const isAnswered = !!answers[q.id.toString()];
-                  return (
-                    <button
-                      key={q.id}
-                      onClick={() => setCurrentQ(i)}
-                      className={cn(
-                        "flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold transition-all duration-200",
-                        isCurrent ? "bg-indigo-600 text-white shadow-md ring-4 ring-indigo-100" : isAnswered ? "bg-transparent text-indigo-600 border-2 border-indigo-200 hover:bg-indigo-50" : "bg-slate-100 text-slate-400 hover:bg-slate-200"
-                      )}
-                    >
-                      {i + 1}
-                    </button>
-                  );
-                })}
+          <aside className="lg:w-64 lg:shrink-0">
+            <div className="rounded-2xl border bg-white p-5 shadow-sm sticky top-40">
+              <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Questions</h3>
+              <div className="grid grid-cols-6 gap-2 lg:grid-cols-5">
+                {questions.map((q, i) => (
+                  <button
+                    key={q.id}
+                    onClick={() => setCurrentQ(i)}
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-lg text-xs font-bold transition-all",
+                      i === currentQ ? "bg-indigo-600 text-white shadow-md" : 
+                      !!answers[q.id.toString()] ? "bg-indigo-50 text-indigo-600 border border-indigo-200" : "bg-slate-100 text-slate-400"
+                    )}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
               </div>
             </div>
           </aside>
@@ -215,11 +240,11 @@ const ExamPage = () => {
             />
 
             <div className="mt-10 flex items-center justify-between">
-              <Button variant="outline" disabled={currentQ === 0} onClick={() => setCurrentQ(p => p - 1)} className="rounded-xl h-12 font-bold px-6"><ChevronLeft className="mr-2" /> Previous</Button>
+              <Button variant="outline" disabled={currentQ === 0} onClick={() => setCurrentQ(p => p - 1)} className="rounded-xl h-12">Previous</Button>
               {currentQ < questions.length - 1 ? (
-                <Button className="rounded-xl h-12 px-8 bg-indigo-600 hover:bg-indigo-700 font-bold" onClick={() => setCurrentQ(p => p + 1)}>Next <ChevronRight className="ml-2" /></Button>
+                <Button className="rounded-xl h-12 px-8 bg-indigo-600 font-bold" onClick={() => setCurrentQ(p => p + 1)}>Next</Button>
               ) : (
-                <Button className="rounded-xl h-12 px-8 bg-green-600 hover:bg-green-700 text-white font-bold" onClick={() => setShowConfirm(true)}><Send className="mr-2" /> Submit Exam</Button>
+                <Button className="rounded-xl h-12 px-8 bg-green-600 text-white font-bold" onClick={() => setShowConfirm(true)}>Submit Exam</Button>
               )}
             </div>
           </div>
@@ -229,12 +254,12 @@ const ExamPage = () => {
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
         <DialogContent className="rounded-3xl sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-center">Ready to Finish?</DialogTitle>
-            <DialogDescription className="text-center pt-2">You've answered <span className="font-bold text-indigo-600">{answeredCount}</span> out of {questions.length} questions.</DialogDescription>
+            <DialogTitle className="text-center">Submit Assessment?</DialogTitle>
+            <DialogDescription className="text-center">Answered {answeredCount} / {questions.length} questions.</DialogDescription>
           </DialogHeader>
-          <DialogFooter className="sm:justify-center gap-3 mt-4">
-            <Button variant="ghost" className="font-bold" onClick={() => setShowConfirm(false)}>Review Answers</Button>
-            <Button className="bg-indigo-600 px-8 font-bold rounded-xl h-12" onClick={handleSubmit} disabled={submitting}>{submitting ? "Saving..." : "Yes, Submit"}</Button>
+          <DialogFooter className="sm:justify-center mt-4">
+            <Button variant="ghost" onClick={() => setShowConfirm(false)}>Review</Button>
+            <Button className="bg-indigo-600 font-bold px-8 h-12 rounded-xl" onClick={handleSubmit} disabled={submitting}>Yes, Submit</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

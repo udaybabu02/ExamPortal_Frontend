@@ -31,11 +31,16 @@ const App = () => (
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/instructions" element={<ProtectedRoute><GeneralInstructions /></ProtectedRoute>} />
+              
               <Route path="/exam-selection" element={<ProtectedRoute><ExamSelection /></ProtectedRoute>} />
+              {/* 👇 THE FIX: Added the dashboard route here! 👇 */}
+              <Route path="/dashboard" element={<ProtectedRoute><ExamSelection /></ProtectedRoute>} />
+              
               <Route path="/exam-instructions/:examId" element={<ProtectedRoute><ExamInstructions /></ProtectedRoute>} />
               <Route path="/exam/:id" element={<ProtectedRoute><ExamPage /></ProtectedRoute>} />
               <Route path="/result" element={<ProtectedRoute><ResultPage /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
+              
             </Routes>
           </ExamProvider>
         </AuthProvider>
