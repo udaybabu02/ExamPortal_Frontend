@@ -14,6 +14,9 @@ import {
 import { ChevronLeft, ChevronRight, Send, AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// --- IMPORT ADDED HERE ---
+import { API_BASE_URL } from "@/config";
+
 interface QuestionItem {
   id: number;
   subject: string;
@@ -62,7 +65,8 @@ const ExamPage = () => {
 
           for (const sub of subjects) {
             try {
-              const res = await axios.get(`http://localhost:5000/api/questions/${encodeURIComponent(sub)}`);
+              // --- LOCALHOST REMOVED, API_BASE_URL ADDED HERE ---
+              const res = await axios.get(`${API_BASE_URL}/questions/${encodeURIComponent(sub)}`);
               const subjectSelection = res.data
                 .sort(() => Math.random() - 0.5)
                 .slice(0, 10);
@@ -146,7 +150,8 @@ const ExamPage = () => {
         answers: resultsData
       };
 
-      await axios.post("http://localhost:5000/api/results", payload);
+      // --- LOCALHOST REMOVED, API_BASE_URL ADDED HERE ---
+      await axios.post(`${API_BASE_URL}/results`, payload);
       
       // 👉 USER-SPECIFIC PROGRESS TRACKER
       const allProgress = JSON.parse(localStorage.getItem("user_exam_progress") || "{}");
