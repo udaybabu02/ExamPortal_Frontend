@@ -10,7 +10,6 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import armsLogo from "@/assets/arms-logo.png";
-// --- Step 1: Using your imported config ---
 import { API_BASE_URL } from "@/config";
 
 const Login = () => {
@@ -34,7 +33,6 @@ const Login = () => {
     setLoading(true);
 
     try {
-      // --- Step 2: Updated fetch to use API_BASE_URL variable ---
       const response = await fetch(`${API_BASE_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

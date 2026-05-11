@@ -8,8 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
 import armsLogo from "@/assets/arms-logo.png";
 import { useToast } from "@/hooks/use-toast";
-
-// --- IMPORT ADDED HERE ---
 import { API_BASE_URL } from "@/config";
 
 /** Generate a unique Hall Ticket Number like ARMS-XXXXXX */
@@ -68,7 +66,6 @@ const Register = () => {
     setLoading(true);
 
     try {
-      // --- LOCALHOST REMOVED, API_BASE_URL ADDED HERE ---
       const response = await fetch(`${API_BASE_URL}/register`, {
         method: "POST",
         headers: {
@@ -109,7 +106,6 @@ const Register = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 px-4 py-10">
       <div className="w-full max-w-md space-y-5">
-        {/* Logo */}
         <div className="flex flex-col items-center gap-1 text-center">
           <img src={armsLogo} alt="ARMS Logo" className="max-h-[90px] w-auto object-contain drop-shadow-lg p-2" />
           <p className="text-muted-foreground text-sm">Create your account</p>
@@ -122,13 +118,11 @@ const Register = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Full Name */}
               <div className="space-y-1.5">
                 <Label htmlFor="name">Full Name *</Label>
                 <Input id="name" placeholder="John Doe" value={name} onChange={(e) => setName(e.target.value)} required />
               </div>
 
-              {/* Email */}
               <div className="space-y-1.5">
                 <Label htmlFor="reg-email">Email (Gmail only) *</Label>
                 <Input
@@ -142,7 +136,6 @@ const Register = () => {
                 {email && !emailValid && <p className="text-xs text-destructive">Must be a valid @gmail.com address</p>}
               </div>
 
-              {/* Mobile */}
               <div className="space-y-1.5">
                 <Label htmlFor="mobile">Mobile Number (India) *</Label>
                 <div className="flex gap-2">
@@ -160,7 +153,6 @@ const Register = () => {
                 {mobile && !mobileValid && <p className="text-xs text-destructive">Enter a valid 10-digit number starting with 6-9</p>}
               </div>
 
-              {/* Password */}
               <div className="space-y-1.5">
                 <Label htmlFor="reg-password">Password *</Label>
                 <div className="relative">
@@ -197,7 +189,6 @@ const Register = () => {
                 )}
               </div>
 
-              {/* ID Type */}
               <div className="space-y-1.5">
                 <Label>ID Type *</Label>
                 <Select value={idType} onValueChange={setIdType}>
